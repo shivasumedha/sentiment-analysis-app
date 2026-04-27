@@ -4,36 +4,60 @@ import nltk
 import spacy
 from nltk.sentiment import SentimentIntensityAnalyzer
 
-nltk.download("vader_lexicon")
-
+# --------------------------------
+# Flask App
+# --------------------------------
 app = Flask(__name__)
 
-# Load Models
-nlp = spacy.load("en_core_web_sm")
-sia = SentimentIntensityAnalyzer()
+# --------------------------------
+# Safe spaCy Load
+# --------------------------------
+try:
+    nlp = spacy.load("en_core_web_sm")
+except:
+    nlp = spacy.blank("en")
 
+# --------------------------------
+# Safe NLTK Setup
+# --------------------------------
+try:
+    sia = SentimentIntensityAnalyzer()
+except:
+    nltk.download("vader_lexicon")
+    sia = SentimentIntensityAnalyzer()
+
+# --------------------------------
+# Load Transformer Model
+# --------------------------------
 classifier = pipeline(
     "sentiment-analysis",
     model="distilbert-base-uncased-finetuned-sst-2-english"
 )
 
+# --------------------------------
 # Store History
+# --------------------------------
 history = []
 
-# Dashboard Counts
 positive_count = 0
 negative_count = 0
 neutral_count = 0
 
+# --------------------------------
+# Sentiment Function
+# --------------------------------
 def analyze_sentiment(text):
     global positive_count, negative_count, neutral_count
 
+    # spaCy processing
     doc = nlp(text)
 
+    # Transformer prediction
     pred = classifier(text)[0]
-    tf_label = pred["label"]
-    tf_score = pred["score"]
+    label = pred["label"]
+    score = pred["score"]
 
+    # NLTK support
     vader = sia.polarity_scores(text)
     compound = vader["compound"]
 
@@ -44,7 +68,7 @@ def analyze_sentiment(text):
         neutral_count += 1
 
     else:
-        if tf_label == "POSITIVE":
+        if label == "POSITIVE":
             result = "Positive"
             emoji = "😊"
             positive_count += 1
@@ -53,8 +77,9 @@ def analyze_sentiment(text):
             emoji = "😞"
             negative_count += 1
 
-        confidence = round(tf_score * 100, 2)
+        confidence = round(score * 100, 2)
 
+    # Save History
     history.insert(0, f"{text} → {result}")
 
     if len(history) > 5:
@@ -62,6 +87,9 @@ def analyze_sentiment(text):
 
     return result, emoji, confidence
 
+# --------------------------------
+# Main Route
+# --------------------------------
 @app.route("/", methods=["GET", "POST"])
 def home():
     result = ""
@@ -73,8 +101,14 @@ def home():
         sentence = request.form.get("sentence", "").strip()
 
         if sentence:
-            result, emoji, confidence = analyze_sentiment(sentence)
-            confidence = str(confidence) + "%"
+            try:
+                result, emoji, confidence = analyze_sentiment(sentence)
+                confidence = str(confidence) + "%"
+
+            except:
+                result = "Error"
+                emoji = "⚠️"
+                confidence = "0%"
 
     return render_template(
         "index.html",
@@ -88,5 +122,8 @@ def home():
         neutral=neutral_count
     )
 
+# --------------------------------
+# Run App
+# --------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=10000)
